@@ -1,0 +1,115 @@
+{
+  "goal": "build me a basic confluence clone",
+  "phase": 0,
+  "status": "initialising",
+  "started_at": "2026-02-28T05:17:54.092Z",
+  "iterations": {
+    "critic_fixer": 0,
+    "max_critic_fixer": 3
+  },
+  "gates": {
+    "prd_coverage": null,
+    "test_coverage": null,
+    "critic_score": null,
+    "security": null,
+    "performance": null
+  },
+  "thresholds": {
+    "test_coverage": 70,
+    "critic_score": 80,
+    "prd_required_coverage": 100,
+    "prd_nicetohave_coverage": 80
+  },
+  "token_warning_threshold": 8000,
+  "detected_features": {},
+  "token_totals": {
+    "in": 0,
+    "out": 0
+  },
+  "agents": {
+    "research": {
+      "status": "pending",
+      "activity": null,
+      "tokens_in": 0,
+      "tokens_out": 0
+    },
+    "analyst": {
+      "status": "pending",
+      "activity": null,
+      "tokens_in": 0,
+      "tokens_out": 0
+    },
+    "architect": {
+      "status": "pending",
+      "activity": null,
+      "tokens_in": 0,
+      "tokens_out": 0
+    },
+    "security_planner": {
+      "status": "pending",
+      "activity": null,
+      "tokens_in": 0,
+      "tokens_out": 0
+    },
+    "ux_designer": {
+      "status": "pending",
+      "activity": null,
+      "tokens_in": 0,
+      "tokens_out": 0
+    },
+    "implementer": {
+      "status": "pending",
+      "activity": null,
+      "tokens_in": 0,
+      "tokens_out": 0
+    },
+    "test_writer": {
+      "status": "pending",
+      "activity": null,
+      "tokens_in": 0,
+      "tokens_out": 0
+    },
+    "critic": {
+      "status": "pending",
+      "activity": null,
+      "tokens_in": 0,
+      "tokens_out": 0
+    },
+    "fixer": {
+      "status": "pending",
+      "activity": null,
+      "tokens_in": 0,
+      "tokens_out": 0
+    },
+    "security_auditor": {
+      "status": "pending",
+      "activity": null,
+      "tokens_in": 0,
+      "tokens_out": 0
+    },
+    "performance_agent": {
+      "status": "pending",
+      "activity": null,
+      "tokens_in": 0,
+      "tokens_out": 0
+    },
+    "completeness_judge": {
+      "status": "pending",
+      "activity": null,
+      "tokens_in": 0,
+      "tokens_out": 0
+    },
+    "documenter": {
+      "status": "pending",
+      "activity": null,
+      "tokens_in": 0,
+      "tokens_out": 0
+    },
+    "deployer": {
+      "status": "pending",
+      "activity": null,
+      "tokens_in": 0,
+      "tokens_out": 0
+    }
+  }
+}
