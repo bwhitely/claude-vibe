@@ -1,7 +1,7 @@
 {
   "goal": "build me a basic confluence clone",
-  "phase": 0,
-  "status": "initialising",
+  "phase": 1,
+  "status": "running",
   "started_at": "2026-02-28T05:19:00.730Z",
   "iterations": {
     "critic_fixer": 0,
@@ -28,7 +28,7 @@
   },
   "agents": {
     "research": {
-      "status": "pending",
+      "status": "passed",
       "activity": null,
       "tokens_in": 0,
       "tokens_out": 0
