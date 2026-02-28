@@ -52,7 +52,7 @@
       "tokens_out": 0
     },
     "security_planner": {
-      "status": "pending",
+      "status": "passed",
       "activity": null,
       "tokens_in": 0,
       "tokens_out": 0
