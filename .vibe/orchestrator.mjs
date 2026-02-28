@@ -16,6 +16,10 @@ const PROMPTS = resolve(VIBE_DIR, 'prompts');
 const AGENT_MODEL = 'sonnet';
 const TOKEN_WARNING_THRESHOLD = 8000;
 
+// Set when the user sends SIGINT so we write "interrupted" instead of "failed"
+let interrupted = false;
+process.once('SIGINT', () => { interrupted = true; });
+
 const DIFF_EXCLUDE_PATTERNS = [
   ':(exclude)*.md', ':(exclude)*.json', ':(exclude)*.lock',
   ':(exclude)*.yaml', ':(exclude)*.yml',
@@ -62,15 +66,16 @@ function deepMerge(target, source) {
   }
 }
 
-function setAgentStatus(name, status, activity = null, tokens_in = 0, tokens_out = 0) {
+function setAgentStatus(name, status, activity = null, tokens_in = null, tokens_out = null) {
   const state = readState();
   if (!state.agents) state.agents = {};
   state.agents[name] = {
     ...state.agents[name],
     status,
     activity,
-    tokens_in: tokens_in || state.agents[name]?.tokens_in || 0,
-    tokens_out: tokens_out || state.agents[name]?.tokens_out || 0,
+    // Preserve existing token counts if new values are null (agent still running or unknown)
+    tokens_in:  tokens_in  ?? state.agents[name]?.tokens_in  ?? null,
+    tokens_out: tokens_out ?? state.agents[name]?.tokens_out ?? null,
   };
   writeState(state);
 }
@@ -168,6 +173,9 @@ function runAgent(name, phase, promptFile, contextInput) {
       '--dangerously-skip-permissions',
     ];
 
+    // Track current phase in state so the UI phase counter stays current
+    updateState({ phase });
+
     const child = spawn('claude', args, {
       cwd: PROJECT_ROOT,
       env,
@@ -190,27 +198,44 @@ function runAgent(name, phase, promptFile, contextInput) {
 
       let parsed;
       try {
-        parsed = JSON.parse(stdout);
+        parsed = JSON.parse(stdout.trim());
       } catch {
-        const jsonMatch = stdout.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          try { parsed = JSON.parse(jsonMatch[0]); } catch {
-            parsed = { result: stdout, input_tokens: 0, output_tokens: 0 };
+        // Try JSONL: find the last line that parses as JSON and has a result or token field
+        let found = false;
+        const lines = stdout.trim().split('\n').reverse();
+        for (const line of lines) {
+          try {
+            const obj = JSON.parse(line.trim());
+            if (obj.result !== undefined || obj.input_tokens !== undefined || obj.usage !== undefined) {
+              parsed = obj;
+              found = true;
+              break;
+            }
+          } catch {}
+        }
+        if (!found) {
+          // Greedy regex fallback — extract outermost {...}
+          const jsonMatch = stdout.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            try { parsed = JSON.parse(jsonMatch[0]); } catch {
+              parsed = { result: stdout };
+            }
+          } else {
+            parsed = { result: stdout };
           }
-        } else {
-          parsed = { result: stdout, input_tokens: 0, output_tokens: 0 };
         }
       }
 
       const result = parsed.result || parsed.content || stdout;
-      const tokensIn = parsed.input_tokens || parsed.tokens_in || 0;
-      const tokensOut = parsed.output_tokens || parsed.tokens_out || 0;
-      const tokenWarning = tokensIn > TOKEN_WARNING_THRESHOLD;
+      // Handle multiple possible token field locations from different CLI versions
+      const tokensIn  = parsed.input_tokens  ?? parsed.tokens_in  ?? parsed.usage?.input_tokens  ?? null;
+      const tokensOut = parsed.output_tokens ?? parsed.tokens_out ?? parsed.usage?.output_tokens ?? null;
+      const tokenWarning = (tokensIn ?? 0) > TOKEN_WARNING_THRESHOLD;
 
       const state = readState();
       state.token_totals = state.token_totals || { in: 0, out: 0 };
-      state.token_totals.in += tokensIn;
-      state.token_totals.out += tokensOut;
+      if (tokensIn  != null) state.token_totals.in  += tokensIn;
+      if (tokensOut != null) state.token_totals.out += tokensOut;
       writeState(state);
 
       setAgentStatus(name, 'passed', null, tokensIn, tokensOut);
@@ -898,7 +923,7 @@ async function bootstrap(goal) {
   for (const name of ['research', 'analyst', 'architect', 'security_planner', 'ux_designer',
     'implementer', 'test_writer', 'critic', 'fixer', 'security_auditor', 'performance_agent',
     'completeness_judge', 'documenter', 'deployer']) {
-    initialState.agents[name] = { status: 'pending', activity: null, tokens_in: 0, tokens_out: 0 };
+    initialState.agents[name] = { status: 'pending', activity: null, tokens_in: null, tokens_out: null };
   }
 
   writeState(initialState);
@@ -1058,7 +1083,7 @@ export async function runPipeline(goal) {
   } catch (err) {
     console.error(`\n  PIPELINE ERROR: ${err.message}`);
     console.error(err.stack);
-    try { updateState({ status: 'failed' }); } catch {}
+    try { updateState({ status: interrupted ? 'interrupted' : 'failed' }); } catch {}
   } finally {
     if (uiProcess) {
       try { process.kill(-uiProcess.pid); } catch {}
@@ -1141,7 +1166,7 @@ export async function continuePipeline() {
   } catch (err) {
     console.error(`\n  PIPELINE ERROR: ${err.message}`);
     console.error(err.stack);
-    try { updateState({ status: 'failed' }); } catch {}
+    try { updateState({ status: interrupted ? 'interrupted' : 'failed' }); } catch {}
   } finally {
     if (uiProcess) {
       try { process.kill(-uiProcess.pid); } catch {}
