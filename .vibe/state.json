@@ -21,7 +21,13 @@
     "prd_nicetohave_coverage": 80
   },
   "token_warning_threshold": 8000,
-  "detected_features": {},
+  "detected_features": {
+    "has_ui": true,
+    "has_document_export": true,
+    "has_spreadsheet_export": true,
+    "has_pdf_generation": true,
+    "has_presentations": false
+  },
   "token_totals": {
     "in": 0,
     "out": 0
@@ -34,7 +40,7 @@
       "tokens_out": 0
     },
     "analyst": {
-      "status": "pending",
+      "status": "passed",
       "activity": null,
       "tokens_in": 0,
       "tokens_out": 0
