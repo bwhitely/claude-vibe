@@ -6,9 +6,12 @@ import { dirname, resolve } from 'path';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const VIBE_DIR = resolve(__dirname, '..');
-const STATE_PATH = resolve(VIBE_DIR, 'state.json');
-const LOG_PATH = resolve(VIBE_DIR, 'logs', 'agent_actions.jsonl');
+// When invoked by the orchestrator, VIBE_PROJECT_DIR points to the target
+// project's .vibe/ directory. Fall back to the tool repo's .vibe/ for
+// local dev / running the server standalone.
+const VIBE_DIR    = process.env.VIBE_PROJECT_DIR ?? resolve(__dirname, '..');
+const STATE_PATH  = resolve(VIBE_DIR, 'state.json');
+const LOG_PATH    = resolve(VIBE_DIR, 'logs', 'agent_actions.jsonl');
 const PORT = process.env.VIBE_PORT || 4242;
 
 const app = express();

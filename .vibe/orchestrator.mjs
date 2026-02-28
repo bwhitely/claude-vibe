@@ -4,14 +4,14 @@ import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const PROJECT_ROOT = resolve(__dirname, '..');
-const VIBE_DIR = resolve(PROJECT_ROOT, '.vibe');
+const __dirname = dirname(__filename);   // .../vibe/.vibe/ — tool internals (prompts, ui)
+const PROJECT_ROOT = process.cwd();     // wherever the user invoked vibe from
+const VIBE_DIR = resolve(PROJECT_ROOT, '.vibe');           // target project's .vibe/ dir
 const STATE_PATH = resolve(VIBE_DIR, 'state.json');
 const LOG_PATH = resolve(VIBE_DIR, 'logs', 'agent_actions.jsonl');
 const ARTIFACTS = resolve(VIBE_DIR, 'artifacts');
 const CONTEXT = resolve(VIBE_DIR, 'context');
-const PROMPTS = resolve(VIBE_DIR, 'prompts');
+const PROMPTS = resolve(__dirname, 'prompts');              // prompts stay in tool repo
 
 const AGENT_MODEL = 'sonnet';
 const TOKEN_WARNING_THRESHOLD = 8000;
@@ -900,8 +900,9 @@ async function bootstrap(goal) {
     execFileSync('git', ['init'], { cwd: PROJECT_ROOT });
   }
 
-  // 2. Scaffold directories
-  for (const dir of ['logs', 'artifacts', 'context', 'prompts', 'ui']) {
+  // 2. Scaffold project-specific directories only
+  // prompts/ and ui/ stay in the tool repo — not copied into the target project
+  for (const dir of ['logs', 'artifacts', 'context']) {
     mkdirSync(resolve(VIBE_DIR, dir), { recursive: true });
   }
 
@@ -928,16 +929,20 @@ async function bootstrap(goal) {
 
   writeState(initialState);
 
-  // 4. Install UI dependencies
-  const uiDir = resolve(VIBE_DIR, 'ui');
+  // 4. Install UI dependencies (in tool repo, not target project)
+  const uiDir = resolve(__dirname, 'ui');
   if (!existsSync(resolve(uiDir, 'node_modules'))) {
     console.log('  Installing UI dependencies...');
     execFileSync('npm', ['install'], { cwd: uiDir, stdio: 'pipe' });
   }
 
-  // 5. Boot UI monitor
+  // 5. Boot UI monitor — pass the target project's .vibe/ path so the server
+  //    watches the right state.json and agent_actions.jsonl
   const uiProcess = spawn('node', [resolve(uiDir, 'server.js')], {
-    cwd: uiDir, stdio: 'pipe', detached: true,
+    cwd: uiDir,
+    stdio: 'pipe',
+    detached: true,
+    env: { ...process.env, VIBE_PROJECT_DIR: VIBE_DIR },
   });
   uiProcess.unref();
   console.log('  VIBE monitor running at http://localhost:4242');
@@ -983,13 +988,14 @@ async function handleContinue() {
   }
   writeState(state);
 
-  // Boot UI
-  const uiDir = resolve(VIBE_DIR, 'ui');
+  // Boot UI (from tool repo, watching target project's .vibe/)
+  const uiDir = resolve(__dirname, 'ui');
   if (!existsSync(resolve(uiDir, 'node_modules'))) {
     execFileSync('npm', ['install'], { cwd: uiDir, stdio: 'pipe' });
   }
   const uiProcess = spawn('node', [resolve(uiDir, 'server.js')], {
     cwd: uiDir, stdio: 'pipe', detached: true,
+    env: { ...process.env, VIBE_PROJECT_DIR: VIBE_DIR },
   });
   uiProcess.unref();
   console.log('  VIBE monitor running at http://localhost:4242');
