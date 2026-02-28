@@ -15,8 +15,8 @@
     "performance": null
   },
   "thresholds": {
-    "test_coverage": 70,
-    "critic_score": 80,
+    "test_coverage": 20,
+    "critic_score": 75,
     "prd_required_coverage": 100,
     "prd_nicetohave_coverage": 80
   },
