@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VIBE Pipeline Monitor</title>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/@xyflow/react@12/dist/umd/index.js"></script>
+<link href="https://unpkg.com/@xyflow/react@12/dist/style.css" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #14141f;
+    --border: #1e1e2e;
+    --text: #e0e0e8;
+    --text-dim: #6b6b80;
+    --blue: #4a9eff;
+    --green: #34d399;
+    --red: #f87171;
+    --amber: #fbbf24;
+    --grey: #3a3a4a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    overflow: hidden;
+  }
+  #root { height: 100vh; display: flex; flex-direction: column; }
+  .header {
+    padding: 12px 20px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-shrink: 0;
+  }
+  .header h1 {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: var(--blue);
+  }
+  .header .goal {
+    font-size: 12px;
+    color: var(--text-dim);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .header .status-badge {
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 4px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .main-area {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+  }
+  .flow-container { flex: 1; }
+  .detail-panel {
+    width: 280px;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    padding: 16px;
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
+  .detail-panel h3 {
+    font-size: 12px;
+    color: var(--blue);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 12px;
+  }
+  .detail-panel .field {
+    margin-bottom: 10px;
+  }
+  .detail-panel .field label {
+    font-size: 10px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: block;
+    margin-bottom: 2px;
+  }
+  .detail-panel .field .value {
+    font-size: 13px;
+    color: var(--text);
+  }
+  .summary-bar {
+    padding: 8px 20px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 24px;
+    align-items: center;
+    font-size: 11px;
+    color: var(--text-dim);
+    flex-shrink: 0;
+  }
+  .summary-bar .metric {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .summary-bar .metric .val {
+    color: var(--text);
+    font-weight: 600;
+  }
+  .gate-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .gate-dot.null { background: var(--grey); }
+  .gate-dot.passed { background: var(--green); }
+  .gate-dot.failed { background: var(--red); }
+  .gates-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  /* Custom node styles */
+  .agent-node {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    min-width: 140px;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+  .agent-node:hover { border-color: var(--blue); }
+  .agent-node.pending { opacity: 0.4; }
+  .agent-node.running { border-color: var(--blue); box-shadow: 0 0 12px rgba(74,158,255,0.2); }
+  .agent-node.passed { border-color: var(--green); }
+  .agent-node.failed { border-color: var(--red); }
+  .agent-node.skipped { opacity: 0.3; }
+  .agent-node.waiting_user { border-color: var(--amber); }
+  .agent-node .node-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+  }
+  .agent-node .node-phase {
+    font-size: 9px;
+    color: var(--text-dim);
+    background: var(--bg);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+  .agent-node .node-name {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .agent-node .node-status {
+    font-size: 10px;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .agent-node .node-activity {
+    font-size: 9px;
+    color: var(--blue);
+    margin-top: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 160px;
+  }
+  .status-icon { font-size: 12px; }
+  .status-icon.pending { color: var(--grey); }
+  .status-icon.running { color: var(--blue); }
+  .status-icon.passed { color: var(--green); }
+  .status-icon.failed { color: var(--red); }
+  .status-icon.skipped { color: var(--grey); }
+  .status-icon.waiting_user { color: var(--amber); }
+  .token-warn {
+    font-size: 10px;
+    color: var(--amber);
+    margin-left: 4px;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+  .agent-node.running .status-icon { animation: pulse 1.5s infinite; }
+
+  .react-flow__edge-path { stroke: var(--border) !important; }
+  .react-flow__edge.animated .react-flow__edge-path { stroke: var(--blue) !important; }
+  .react-flow__background { background: var(--bg) !important; }
+
+  .no-data {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--text-dim);
+    font-size: 14px;
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+const { createElement: h, useState, useEffect, useCallback, useRef, useMemo } = React;
+const { ReactFlow, Background, Controls, Handle, Position, MarkerType } = window['@xyflow/react'] || {};
+
+const AGENTS = [
+  { id: 'research',          label: 'Research',           phase: 1 },
+  { id: 'analyst',           label: 'Analyst',            phase: 2 },
+  { id: 'architect',         label: 'Architect',          phase: 3 },
+  { id: 'security_planner',  label: 'Security Planner',   phase: 4 },
+  { id: 'ux_designer',       label: 'UX Designer',        phase: 5 },
+  { id: 'implementer',       label: 'Implementer',        phase: 6 },
+  { id: 'test_writer',       label: 'Test Writer',        phase: 7 },
+  { id: 'critic',            label: 'Critic',             phase: 8 },
+  { id: 'fixer',             label: 'Fixer',              phase: 9 },
+  { id: 'security_auditor',  label: 'Security Auditor',   phase: 10 },
+  { id: 'performance_agent', label: 'Performance',        phase: '10b' },
+  { id: 'completeness_judge',label: 'Completeness Judge', phase: 11 },
+  { id: 'documenter',        label: 'Documenter',         phase: 12 },
+  { id: 'deployer',          label: 'Deployer',           phase: 13 },
+];
+
+const STATUS_ICONS = {
+  pending: '\u25CB',
+  running: '\u25CF',
+  passed: '\u2713',
+  failed: '\u2717',
+  skipped: '\u2014',
+  waiting_user: '\u23F8',
+};
+
+function AgentNode({ data }) {
+  const { agent, agentState, onClick } = data;
+  const status = agentState?.status || 'pending';
+  return h('div', {
+    className: `agent-node ${status}`,
+    onClick: () => onClick(agent.id),
+  },
+    h(Handle, { type: 'target', position: Position.Left, style: { background: 'var(--border)', width: 6, height: 6 } }),
+    h('div', { className: 'node-header' },
+      h('span', { className: 'node-phase' }, agent.phase),
+      h('span', { className: 'node-name' }, agent.label),
+      agentState?.tokens_in > 8000 ? h('span', { className: 'token-warn', title: 'Token warning: input > 8000' }, '\u26A0') : null,
+    ),
+    h('div', { className: 'node-status' },
+      h('span', { className: `status-icon ${status}` }, STATUS_ICONS[status] || '\u25CB'),
+      h('span', null, status),
+    ),
+    agentState?.activity ? h('div', { className: 'node-activity', title: agentState.activity }, agentState.activity) : null,
+    h(Handle, { type: 'source', position: Position.Right, style: { background: 'var(--border)', width: 6, height: 6 } }),
+  );
+}
+
+const nodeTypes = { agent: AgentNode };
+
+function buildGraph(agents, onNodeClick) {
+  const X_STEP = 200;
+  const Y_BASE = 200;
+  const Y_STEP = 100;
+
+  // Layout: mostly linear left-to-right, with parallel branches
+  const positions = {
+    research:           { x: 0,          y: Y_BASE },
+    analyst:            { x: X_STEP,     y: Y_BASE },
+    architect:          { x: X_STEP * 2, y: Y_BASE },
+    security_planner:   { x: X_STEP * 3, y: Y_BASE },
+    ux_designer:        { x: X_STEP * 4, y: Y_BASE },
+    implementer:        { x: X_STEP * 5, y: Y_BASE },
+    test_writer:        { x: X_STEP * 6, y: Y_BASE },
+    critic:             { x: X_STEP * 7, y: Y_BASE },
+    fixer:              { x: X_STEP * 7, y: Y_BASE + Y_STEP },
+    security_auditor:   { x: X_STEP * 8, y: Y_BASE - Y_STEP / 2 },
+    performance_agent:  { x: X_STEP * 8, y: Y_BASE + Y_STEP / 2 },
+    completeness_judge: { x: X_STEP * 9, y: Y_BASE },
+    documenter:         { x: X_STEP * 10,y: Y_BASE },
+    deployer:           { x: X_STEP * 11,y: Y_BASE },
+  };
+
+  const nodes = AGENTS.map(agent => ({
+    id: agent.id,
+    type: 'agent',
+    position: positions[agent.id] || { x: 0, y: 0 },
+    data: { agent, agentState: agents?.[agent.id], onClick: onNodeClick },
+  }));
+
+  const edges = [
+    { id: 'e-res-ana', source: 'research', target: 'analyst' },
+    { id: 'e-ana-arc', source: 'analyst', target: 'architect' },
+    { id: 'e-arc-sec', source: 'architect', target: 'security_planner' },
+    { id: 'e-sec-ux',  source: 'security_planner', target: 'ux_designer' },
+    { id: 'e-ux-imp',  source: 'ux_designer', target: 'implementer' },
+    { id: 'e-imp-tst', source: 'implementer', target: 'test_writer' },
+    { id: 'e-tst-cri', source: 'test_writer', target: 'critic' },
+    { id: 'e-cri-fix', source: 'critic', target: 'fixer', animated: true, style: { stroke: 'var(--amber)' }, label: 'loop' },
+    { id: 'e-fix-cri', source: 'fixer', target: 'critic', animated: true, style: { stroke: 'var(--amber)' }, type: 'default' },
+    { id: 'e-cri-sa',  source: 'critic', target: 'security_auditor' },
+    { id: 'e-cri-pa',  source: 'critic', target: 'performance_agent' },
+    { id: 'e-sa-cj',   source: 'security_auditor', target: 'completeness_judge' },
+    { id: 'e-pa-cj',   source: 'performance_agent', target: 'completeness_judge' },
+    { id: 'e-cj-doc',  source: 'completeness_judge', target: 'documenter' },
+    { id: 'e-doc-dep', source: 'documenter', target: 'deployer' },
+  ].map(e => ({
+    ...e,
+    style: e.style || { stroke: 'var(--border)' },
+    markerEnd: { type: MarkerType?.ArrowClosed, color: 'var(--border)' },
+  }));
+
+  return { nodes, edges };
+}
+
+function formatTokens(n) {
+  if (!n || n === 0) return '0';
+  if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
+  return String(n);
+}
+
+function formatDuration(startedAt) {
+  if (!startedAt) return '--:--';
+  const diff = Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000);
+  const m = Math.floor(diff / 60);
+  const s = diff % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function App() {
+  const [data, setData] = useState({ state: null, log: [] });
+  const [selected, setSelected] = useState(null);
+  const timerRef = useRef(null);
+  const [, forceUpdate] = useState(0);
+
+  useEffect(() => {
+    const es = new EventSource('/events');
+    es.onmessage = (e) => {
+      try { setData(JSON.parse(e.data)); } catch {}
+    };
+    // Tick every second for elapsed timer
+    timerRef.current = setInterval(() => forceUpdate(n => n + 1), 1000);
+    return () => { es.close(); clearInterval(timerRef.current); };
+  }, []);
+
+  const state = data.state;
+  const agents = state?.agents || {};
+  const onNodeClick = useCallback((id) => setSelected(id), []);
+  const { nodes, edges } = useMemo(() => buildGraph(agents, onNodeClick), [agents, onNodeClick]);
+
+  const totalIn = state?.token_totals?.in || 0;
+  const totalOut = state?.token_totals?.out || 0;
+  const phasesComplete = Object.values(agents).filter(a => a.status === 'passed' || a.status === 'skipped').length;
+  const phasesTotal = AGENTS.length;
+  const gates = state?.gates || {};
+
+  const selectedAgent = selected ? AGENTS.find(a => a.id === selected) : null;
+  const selectedState = selected ? agents[selected] : null;
+  const runningAgent = Object.entries(agents).find(([_, a]) => a.status === 'running');
+
+  // Auto-select running agent
+  useEffect(() => {
+    if (runningAgent && !selected) setSelected(runningAgent[0]);
+  }, [runningAgent?.[0]]);
+
+  const statusColor = state?.status === 'complete' ? 'var(--green)'
+    : state?.status === 'running' ? 'var(--blue)'
+    : state?.status === 'failed' ? 'var(--red)'
+    : 'var(--grey)';
+
+  if (!state) {
+    return h('div', { className: 'no-data' }, 'Waiting for pipeline state...');
+  }
+
+  return h('div', { id: 'app', style: { height: '100vh', display: 'flex', flexDirection: 'column' } },
+    // Header
+    h('div', { className: 'header' },
+      h('h1', null, 'VIBE'),
+      h('span', { className: 'goal' }, state.goal || ''),
+      h('span', {
+        className: 'status-badge',
+        style: { background: statusColor, color: 'var(--bg)' },
+      }, state.status || 'unknown'),
+    ),
+
+    // Main area
+    h('div', { className: 'main-area' },
+      // Flow graph
+      ReactFlow ? h('div', { className: 'flow-container' },
+        h(ReactFlow, {
+          nodes,
+          edges,
+          nodeTypes,
+          fitView: true,
+          nodesDraggable: false,
+          nodesConnectable: false,
+          elementsSelectable: false,
+          proOptions: { hideAttribution: true },
+          minZoom: 0.3,
+          maxZoom: 1.5,
+          defaultViewport: { x: 50, y: 50, zoom: 0.8 },
+        },
+          h(Background, { color: 'var(--border)', gap: 20, size: 1 }),
+          h(Controls, { showInteractive: false }),
+        ),
+      ) : h('div', { className: 'no-data' }, 'ReactFlow not loaded'),
+
+      // Detail panel
+      selectedAgent ? h('div', { className: 'detail-panel' },
+        h('h3', null, 'Agent Detail'),
+        h('div', { className: 'field' },
+          h('label', null, 'Name'),
+          h('div', { className: 'value' }, selectedAgent.label),
+        ),
+        h('div', { className: 'field' },
+          h('label', null, 'Phase'),
+          h('div', { className: 'value' }, String(selectedAgent.phase)),
+        ),
+        h('div', { className: 'field' },
+          h('label', null, 'Status'),
+          h('div', { className: 'value', style: { color: {
+            pending: 'var(--grey)', running: 'var(--blue)', passed: 'var(--green)',
+            failed: 'var(--red)', skipped: 'var(--grey)', waiting_user: 'var(--amber)',
+          }[selectedState?.status] || 'var(--text)' } },
+            (STATUS_ICONS[selectedState?.status] || '') + ' ' + (selectedState?.status || 'pending'),
+          ),
+        ),
+        selectedState?.activity ? h('div', { className: 'field' },
+          h('label', null, 'Activity'),
+          h('div', { className: 'value' }, selectedState.activity),
+        ) : null,
+        h('div', { className: 'field' },
+          h('label', null, 'Tokens In'),
+          h('div', { className: 'value' }, formatTokens(selectedState?.tokens_in)),
+        ),
+        h('div', { className: 'field' },
+          h('label', null, 'Tokens Out'),
+          h('div', { className: 'value' }, formatTokens(selectedState?.tokens_out)),
+        ),
+        selectedState?.tokens_in > 8000 ? h('div', { className: 'field' },
+          h('label', { style: { color: 'var(--amber)' } }, '\u26A0 Token Warning'),
+          h('div', { className: 'value', style: { color: 'var(--amber)', fontSize: '11px' } },
+            'Input tokens exceeded 8,000 threshold'),
+        ) : null,
+      ) : h('div', { className: 'detail-panel' },
+        h('h3', null, 'Agent Detail'),
+        h('div', { style: { color: 'var(--text-dim)', fontSize: '12px' } }, 'Click a node to view details'),
+      ),
+    ),
+
+    // Summary bar
+    h('div', { className: 'summary-bar' },
+      h('div', { className: 'metric' },
+        h('span', null, 'Tokens:'),
+        h('span', { className: 'val' }, `${formatTokens(totalIn)} in / ${formatTokens(totalOut)} out`),
+      ),
+      h('div', { className: 'metric' },
+        h('span', null, 'Elapsed:'),
+        h('span', { className: 'val' }, formatDuration(state.started_at)),
+      ),
+      h('div', { className: 'metric' },
+        h('span', null, 'Phases:'),
+        h('span', { className: 'val' }, `${phasesComplete}/${phasesTotal}`),
+      ),
+      h('div', { className: 'metric' },
+        h('span', null, 'Gates:'),
+        h('div', { className: 'gates-group' },
+          ...Object.entries(gates).map(([name, val]) =>
+            h('span', {
+              key: name,
+              className: `gate-dot ${val === null ? 'null' : val ? 'passed' : 'failed'}`,
+              title: `${name}: ${val === null ? 'pending' : val ? 'passed' : 'failed'}`,
+            }),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(h(App));
+</script>
+</body>
+</html>

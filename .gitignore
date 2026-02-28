@@ -1,0 +1,7 @@
+node_modules/
+.vibe/context/
+.vibe/continue.md
+.vibe-deploy.json
+.env
+.env.*
+!.env.example
