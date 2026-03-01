@@ -181,7 +181,6 @@
     padding: 20px;
     overflow-y: auto;
     max-height: 55%;
-    border-bottom: 1px solid var(--border);
   }
   #log-panel {
     flex: 1;
@@ -307,6 +306,197 @@
   }
   .gdot.passed { background: var(--green); }
   .gdot.failed { background: var(--red); }
+  .run-count-pill {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--dim);
+    flex-shrink: 0;
+  }
+
+  /* ── Content viewer modal ─── */
+  #content-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    background: rgba(5,5,8,0.88);
+    display: flex;
+    flex-direction: column;
+    padding: 32px;
+  }
+  #content-modal-inner {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    max-width: 1100px;
+    width: 100%;
+    align-self: center;
+  }
+  #content-modal-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  #content-modal-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: 0.3px;
+  }
+  #content-modal-label {
+    font-size: 11px;
+    color: var(--dim);
+    flex: 1;
+  }
+  .cm-close {
+    font-family: inherit;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--dim);
+    cursor: pointer;
+    border-radius: 4px;
+    padding: 3px 10px;
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+  .cm-close:hover { border-color: var(--red); color: var(--red); }
+  #content-modal-body {
+    flex: 1;
+    overflow: auto;
+    padding: 20px;
+    font-size: 12.5px;
+    line-height: 1.65;
+    color: var(--text);
+    white-space: pre-wrap;
+    word-break: break-word;
+    tab-size: 2;
+  }
+
+  /* ── Expandable log entries ─── */
+  .log-expand-btn {
+    font-size: 10px;
+    color: var(--dim);
+    cursor: pointer;
+    padding: 1px 5px;
+    flex-shrink: 0;
+    border-radius: 3px;
+    border: 1px solid transparent;
+    line-height: 1.4;
+    margin-left: auto;
+  }
+  .log-expand-btn:hover { color: var(--blue); border-color: var(--border); }
+  .log-expanded {
+    margin-top: 6px;
+    padding: 8px 10px;
+    background: var(--bg);
+    border-radius: 4px;
+    font-size: 11px;
+    line-height: 1.7;
+  }
+  .log-exp-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 2px;
+    align-items: baseline;
+  }
+  .log-exp-label {
+    color: var(--dim);
+    flex-shrink: 0;
+    min-width: 84px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .log-exp-val { color: var(--text); }
+  .log-exp-link {
+    color: var(--blue);
+    cursor: pointer;
+    text-decoration: underline;
+    font-size: 11px;
+  }
+  .log-exp-link:hover { color: var(--green); }
+  .log-commit {
+    font-family: 'SF Mono', monospace;
+    font-size: 11px;
+    color: var(--green);
+    background: rgba(52,211,153,0.08);
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+
+  /* ── Action buttons in detail panel ─── */
+  #dp-actions {
+    padding: 14px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    border-top: 1px solid var(--border);
+  }
+  .dp-btn {
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    padding: 7px 14px;
+    border-radius: 5px;
+    border: 1.5px solid;
+    cursor: pointer;
+    transition: opacity 0.15s, background 0.15s;
+    text-align: center;
+  }
+  .dp-btn:hover { opacity: 0.8; }
+  .dp-btn:active { opacity: 0.6; }
+  .dp-btn.skip {
+    background: transparent;
+    border-color: var(--amber);
+    color: var(--amber);
+  }
+  .dp-btn.unskip {
+    background: transparent;
+    border-color: var(--dim);
+    color: var(--dim);
+  }
+  .dp-btn.reset {
+    background: transparent;
+    border-color: var(--red);
+    color: var(--red);
+  }
+  .dp-btn.view {
+    background: transparent;
+    border-color: var(--blue);
+    color: var(--blue);
+  }
+
+  /* ── File list in log entries ─── */
+  .log-files {
+    margin-top: 4px;
+    padding: 4px 6px;
+    background: var(--bg);
+    border-radius: 3px;
+    font-size: 11px;
+    color: var(--dim);
+    line-height: 1.55;
+  }
+  .log-files span {
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .log-files .log-more {
+    color: var(--blue);
+    font-style: italic;
+    cursor: pointer;
+  }
 </style>
 </head>
 <body>
@@ -325,6 +515,7 @@
   </div>
   <div id="detail-panel">
     <div id="agent-detail-scroll"></div>
+    <div id="dp-actions" style="display:none"></div>
     <div id="log-panel">
       <div id="log-panel-header">
         Activity Log
@@ -336,6 +527,18 @@
 </div>
 
 <div id="summary-bar"></div>
+
+<!-- ── Content viewer modal ──────────────────────────────────────────────── -->
+<div id="content-modal" style="display:none">
+  <div id="content-modal-inner">
+    <div id="content-modal-header">
+      <span id="content-modal-title"></span>
+      <span id="content-modal-label"></span>
+      <button class="cm-close" onclick="closeContentModal()">✕ close</button>
+    </div>
+    <pre id="content-modal-body"></pre>
+  </div>
+</div>
 
 <script>
 'use strict';
@@ -408,13 +611,44 @@ const GATE_LABELS = {
   performance:   'Perf',
 };
 
+// ── Agent → primary output artifact mapping ───────────────────────────────────
+const AGENT_ARTIFACT = {
+  research:           'research.md',
+  analyst:            'prd.md',
+  architect:          'architecture.md',
+  security_planner:   'threat_model.md',
+  ux_designer:        'ux_spec.md',
+  critic:             'review_findings.md',
+  security_auditor:   'security_findings.md',
+  performance_agent:  'performance_findings.md',
+  completeness_judge: 'done_report.md',
+  deployer:           'deploy_options.md',
+  // implementer, test_writer, fixer, documenter write code files — use commit diff instead
+};
+
+// ── Pricing (Claude Sonnet 4.6) ───────────────────────────────────────────────
+
+const COST_INPUT_PER_1M  = 3.00;   // $ per 1M input tokens
+const COST_OUTPUT_PER_1M = 15.00;  // $ per 1M output tokens
+
+function fmtCost(tokIn, tokOut) {
+  const cost = ((tokIn || 0) / 1e6) * COST_INPUT_PER_1M
+             + ((tokOut || 0) / 1e6) * COST_OUTPUT_PER_1M;
+  if (cost === 0) return null;
+  if (cost < 0.01) return '~<$0.01';
+  return '~$' + cost.toFixed(2);
+}
+
 // ── State ─────────────────────────────────────────────────────────────────────
 
-let pipelineState = null;
-let selectedId    = null;
-let nodeRefs      = {};  // agentId → { node, icon, statusTxt, activityEl, warnEl }
-let dpRefs        = null;
-let summaryRefs   = null;
+let pipelineState   = null;
+let usageData       = null;   // usage_totals.json (persists across resets)
+let currentLog      = [];     // latest log entries (agent_actions.jsonl parsed)
+let expandedLogs    = new Set(); // timestamps of expanded log entries
+let selectedId      = null;
+let nodeRefs        = {};  // agentId → { node, icon, statusTxt, activityEl, warnEl }
+let dpRefs          = null;
+let summaryRefs     = null;
 
 // ── DOM helpers ───────────────────────────────────────────────────────────────
 
@@ -618,8 +852,11 @@ function buildDetailPanel() {
     { key: 'phase',     label: 'Phase'          },
     { key: 'status',    label: 'Status'         },
     { key: 'activity',  label: 'Activity'       },
+    { key: 'duration',  label: 'Duration'       },
     { key: 'tokensIn',  label: 'Tokens In'      },
     { key: 'tokensOut', label: 'Tokens Out'     },
+    { key: 'agentCost', label: 'Est. Cost'      },
+    { key: 'lastError', label: 'Error'          },
     { key: 'warnMsg',   label: '\u26A0 Warning' },
   ];
 
@@ -644,20 +881,36 @@ function buildDetailPanel() {
 function buildSummaryBar() {
   const bar = document.getElementById('summary-bar');
 
-  function addMetric(labelStr) {
-    const m = mk('div', 'metric');
+  function addMetric(labelStr, extraCls) {
+    const m = mk('div', 'metric' + (extraCls ? ' ' + extraCls : ''));
     const lbl = mk('span');
     setText(lbl, labelStr);
     const val = mk('span', 'metric-val');
     m.appendChild(lbl);
     m.appendChild(val);
     bar.appendChild(m);
-    return val;
+    return { metric: m, val };
   }
 
-  const tokensVal  = addMetric('Tokens:');
-  const elapsedVal = addMetric('Elapsed:');
-  const phasesVal  = addMetric('Phases:');
+  const { val: sessionVal }  = addMetric('Session:');
+
+  // All-time metric — hidden until usage_totals.json exists
+  const allTimeMetric = mk('div', 'metric');
+  const allTimeLbl = mk('span');
+  setText(allTimeLbl, 'All-time:');
+  const allTimeVal = mk('span', 'metric-val');
+  allTimeMetric.appendChild(allTimeLbl);
+  allTimeMetric.appendChild(allTimeVal);
+  allTimeMetric.style.display = 'none';
+  bar.appendChild(allTimeMetric);
+
+  // Run count pill — hidden until usage data available
+  const runCountPill = mk('span', 'run-count-pill');
+  runCountPill.style.display = 'none';
+  bar.appendChild(runCountPill);
+
+  const { val: elapsedVal } = addMetric('Elapsed:');
+  const { val: phasesVal  } = addMetric('Phases:');
 
   const gatesMetric = mk('div', 'metric');
   const gatesLbl = mk('span');
@@ -667,7 +920,7 @@ function buildSummaryBar() {
   gatesMetric.appendChild(gatesRow);
   bar.appendChild(gatesMetric);
 
-  return { tokensVal, elapsedVal, phasesVal, gatesRow };
+  return { sessionVal, allTimeMetric, allTimeVal, runCountPill, elapsedVal, phasesVal, gatesRow };
 }
 
 // ── Update helpers ────────────────────────────────────────────────────────────
@@ -692,6 +945,63 @@ function fmtElapsed(startedAt) {
   return `${m}:${s}`;
 }
 
+function fmtDuration(ms) {
+  if (ms == null) return null;
+  const secs = Math.floor(ms / 1000);
+  const m    = Math.floor(secs / 60);
+  const s    = secs % 60;
+  return m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
+
+// ── Content viewer modal ───────────────────────────────────────────────────────
+
+function showContentModal(title, url, label) {
+  const modal   = document.getElementById('content-modal');
+  const titleEl = document.getElementById('content-modal-title');
+  const labelEl = document.getElementById('content-modal-label');
+  const body    = document.getElementById('content-modal-body');
+
+  modal.style.display = 'flex';
+  setText(titleEl, title);
+  setText(labelEl, label || '');
+  body.textContent = 'Loading…';
+  body.style.color = 'var(--dim)';
+
+  fetch(url)
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+    .then(text => {
+      body.style.color = '';
+      try {
+        // Pretty-print JSON artifacts
+        body.textContent = JSON.stringify(JSON.parse(text), null, 2);
+      } catch {
+        body.textContent = text;
+      }
+    })
+    .catch(err => {
+      body.style.color = 'var(--red)';
+      body.textContent = 'Error: ' + err.message;
+    });
+}
+
+function closeContentModal() {
+  document.getElementById('content-modal').style.display = 'none';
+}
+
+// ── API calls to server mutation endpoints ────────────────────────────────────
+
+async function api(method, path) {
+  try {
+    const r = await fetch(path, { method });
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}));
+      console.error(`API ${method} ${path} failed:`, body.error || r.status);
+    }
+  } catch (err) {
+    console.error(`API ${method} ${path} error:`, err);
+  }
+}
+
 // ── Select agent ──────────────────────────────────────────────────────────────
 
 function selectAgent(id) {
@@ -704,6 +1014,7 @@ function selectAgent(id) {
     nodeRefs[id].node.classList.add('node-selected');
   }
   renderDetailPanel();
+  renderActionButtons();
 }
 
 // ── Render functions ──────────────────────────────────────────────────────────
@@ -734,6 +1045,112 @@ function renderNodes(agents) {
   }
 }
 
+function buildLogExpanded(entry) {
+  const box = mk('div', 'log-expanded');
+
+  function row(label, content) {
+    const r = mk('div', 'log-exp-row');
+    const lbl = mk('span', 'log-exp-label');
+    setText(lbl, label);
+    r.appendChild(lbl);
+    r.appendChild(content);
+    box.appendChild(r);
+  }
+
+  // Artifacts read
+  const arts = (entry.context && entry.context.artifacts_read) || [];
+  if (arts.length) {
+    const v = mk('span', 'log-exp-val');
+    setText(v, arts.join(', '));
+    row('Read', v);
+  }
+
+  // Skills injected
+  const skills = (entry.context && entry.context.skills_injected) || [];
+  const skillsVal = mk('span', 'log-exp-val');
+  setText(skillsVal, skills.length ? skills.join(', ') : 'none');
+  row('Skills', skillsVal);
+
+  // Iteration (critic/fixer)
+  if (entry.iteration != null && entry.iteration > 0) {
+    const v = mk('span', 'log-exp-val');
+    setText(v, `${entry.iteration}`);
+    row('Iteration', v);
+  }
+
+  // Gate result
+  if (entry.gate_result != null) {
+    const v = mk('span', 'log-exp-val');
+    setText(v, entry.gate_result ? '✓ passed' : '✗ failed');
+    v.style.color = entry.gate_result ? 'var(--green)' : 'var(--red)';
+    row('Gate', v);
+  }
+
+  // Commit hash + diff link
+  if (entry.commit) {
+    const wrap = mk('span');
+    const chip = mk('span', 'log-commit');
+    setText(chip, entry.commit);
+    wrap.appendChild(chip);
+    if (entry.commit.length >= 6) {
+      const link = mk('span', 'log-exp-link');
+      setText(link, '  view diff →');
+      link.addEventListener('click', () => {
+        const agentDef = AGENTS.find(a => a.id === entry.agent);
+        showContentModal(
+          (agentDef ? agentDef.label : entry.agent) + ' — Commit ' + entry.commit,
+          `/commit-diff/${entry.commit}`,
+          `git show ${entry.commit}`,
+        );
+      });
+      wrap.appendChild(link);
+    }
+    row('Commit', wrap);
+  }
+
+  // Artifact view link
+  if (entry.artifact_written) {
+    const name = entry.artifact_written.split('/').pop();
+    const link = mk('span', 'log-exp-link');
+    setText(link, name + ' →');
+    link.addEventListener('click', () => {
+      showContentModal(name, `/artifact/${name}`, entry.artifact_written);
+    });
+    row('Artifact', link);
+  }
+
+  // Files written
+  const files = Array.isArray(entry.files_written) ? entry.files_written : [];
+  if (files.length) {
+    const v = mk('div', 'log-exp-val');
+    const SHOW = 4;
+    files.slice(0, SHOW).forEach(f => {
+      const s = mk('div');
+      setText(s, f);
+      v.appendChild(s);
+    });
+    if (files.length > SHOW) {
+      const more = mk('span', 'log-exp-link');
+      setText(more, `+ ${files.length - SHOW} more`);
+      let shown = false;
+      more.addEventListener('click', () => {
+        if (shown) return;
+        shown = true;
+        more.remove();
+        files.slice(SHOW).forEach(f => {
+          const s = mk('div');
+          setText(s, f);
+          v.appendChild(s);
+        });
+      });
+      v.appendChild(more);
+    }
+    row('Files', v);
+  }
+
+  return box;
+}
+
 function renderLogFeed(entries) {
   const container = document.getElementById('log-entries');
   const countEl   = document.getElementById('log-count');
@@ -742,19 +1159,23 @@ function renderLogFeed(entries) {
   const count = entries.length;
   setText(countEl, count ? `(${count})` : '');
 
-  // Re-render only if entry count changed — avoids scroll jump during ticker
-  if (container.dataset.count === String(count)) return;
-  container.dataset.count = String(count);
+  // Re-render only if count changed OR expanded set changed
+  const cacheKey = String(count) + ':' + expandedLogs.size;
+  if (container.dataset.cacheKey === cacheKey) return;
+  container.dataset.cacheKey = cacheKey;
 
+  const wasAtBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 4;
   while (container.firstChild) container.removeChild(container.firstChild);
 
   for (const entry of entries) {
+    const isExpanded = expandedLogs.has(entry.timestamp);
     const row = mk('div', 'log-entry');
 
+    // Header row
     const hdr = mk('div', 'log-entry-header');
 
     const agentEl = mk('span', 'log-agent');
-    setText(agentEl, (entry.agent || '?').replace('_', ' '));
+    setText(agentEl, (entry.agent || '?').replace(/_/g, ' '));
     hdr.appendChild(agentEl);
 
     const timeEl = mk('span', 'log-time');
@@ -767,19 +1188,155 @@ function renderLogFeed(entries) {
       hdr.appendChild(art);
     }
 
+    // Expand/collapse toggle
+    const expandBtn = mk('span', 'log-expand-btn');
+    setText(expandBtn, isExpanded ? '▲' : '▼');
+    expandBtn.title = isExpanded ? 'Collapse' : 'Expand details';
+    expandBtn.addEventListener('click', () => {
+      if (expandedLogs.has(entry.timestamp)) {
+        expandedLogs.delete(entry.timestamp);
+      } else {
+        expandedLogs.add(entry.timestamp);
+      }
+      renderLogFeed(currentLog);
+    });
+    hdr.appendChild(expandBtn);
+
     row.appendChild(hdr);
 
+    // Decision line
     if (entry.decision) {
       const dec = mk('div', 'log-decision');
       setText(dec, entry.decision);
       row.appendChild(dec);
     }
 
+    // Expanded detail block
+    if (isExpanded) {
+      row.appendChild(buildLogExpanded(entry));
+    }
+
     container.appendChild(row);
   }
 
-  // Auto-scroll to bottom (newest entry)
-  container.scrollTop = container.scrollHeight;
+  if (wasAtBottom) container.scrollTop = container.scrollHeight;
+}
+
+// ── Action buttons (Skip / Reset from here) ───────────────────────────────────
+
+function renderActionButtons() {
+  const actionsDiv = document.getElementById('dp-actions');
+  if (!actionsDiv) return;
+
+  // Clear existing buttons
+  while (actionsDiv.firstChild) actionsDiv.removeChild(actionsDiv.firstChild);
+
+  if (!selectedId) {
+    actionsDiv.style.display = 'none';
+    return;
+  }
+
+  const s = (pipelineState && pipelineState.agents && pipelineState.agents[selectedId]) || {};
+  const status = s.status || 'pending';
+
+  // Running agents: no actions (don't interrupt live work)
+  if (status === 'running') {
+    actionsDiv.style.display = 'none';
+    return;
+  }
+
+  let hasButtons = false;
+
+  // View Input — for any agent that has had a context file written
+  // (we speculatively try; if 404 the modal shows the error)
+  if (['passed', 'failed', 'skipped', 'running'].includes(status)) {
+    const btn = mk('button', 'dp-btn view');
+    setText(btn, 'View Input Context');
+    btn.title = `Show the exact context passed into ${selectedId}`;
+    btn.addEventListener('click', () => {
+      const agent = AGENTS.find(a => a.id === selectedId);
+      showContentModal(
+        (agent ? agent.label : selectedId) + ' — Input Context',
+        `/context/${selectedId}`,
+        `.vibe/context/${selectedId}_input.md`,
+      );
+    });
+    actionsDiv.appendChild(btn);
+    hasButtons = true;
+  }
+
+  // View Output / View Commit — for passed agents
+  if (status === 'passed') {
+    const artifact = AGENT_ARTIFACT[selectedId];
+    if (artifact) {
+      const btn = mk('button', 'dp-btn view');
+      setText(btn, 'View Output Artifact');
+      btn.title = `Show ${artifact}`;
+      btn.addEventListener('click', () => {
+        const agent = AGENTS.find(a => a.id === selectedId);
+        showContentModal(
+          (agent ? agent.label : selectedId) + ' — Output',
+          `/artifact/${artifact}`,
+          `.vibe/artifacts/${artifact}`,
+        );
+      });
+      actionsDiv.appendChild(btn);
+      hasButtons = true;
+    } else {
+      // Code-writing agents: offer commit diff instead
+      const agentState = (pipelineState && pipelineState.agents && pipelineState.agents[selectedId]) || {};
+      // Find commit from log entries
+      const logEntry = currentLog.slice().reverse().find(e => e.agent === selectedId && e.commit);
+      if (logEntry && logEntry.commit) {
+        const btn = mk('button', 'dp-btn view');
+        setText(btn, 'View Commit Diff');
+        btn.title = `Show git diff for commit ${logEntry.commit}`;
+        btn.addEventListener('click', () => {
+          const agent = AGENTS.find(a => a.id === selectedId);
+          showContentModal(
+            (agent ? agent.label : selectedId) + ' — Commit ' + logEntry.commit,
+            `/commit-diff/${logEntry.commit}`,
+            `git show ${logEntry.commit}`,
+          );
+        });
+        actionsDiv.appendChild(btn);
+        hasButtons = true;
+      }
+    }
+  }
+
+  // Skip / Unskip — for pending and skipped agents
+  if (status === 'pending') {
+    const btn = mk('button', 'dp-btn skip');
+    setText(btn, 'Skip this agent');
+    btn.title = 'Mark agent as skipped — it will be bypassed on the next /vibe continue';
+    btn.addEventListener('click', () => api('POST', `/skip/${selectedId}`));
+    actionsDiv.appendChild(btn);
+    hasButtons = true;
+  } else if (status === 'skipped') {
+    const btn = mk('button', 'dp-btn unskip');
+    setText(btn, 'Restore (un-skip)');
+    btn.title = 'Mark agent as pending so it runs on the next /vibe continue';
+    btn.addEventListener('click', () => api('POST', `/unskip/${selectedId}`));
+    actionsDiv.appendChild(btn);
+    hasButtons = true;
+  }
+
+  // Reset from here — for any agent that has already run or been skipped
+  if (['passed', 'failed', 'waiting_user', 'skipped'].includes(status)) {
+    const btn = mk('button', 'dp-btn reset');
+    setText(btn, 'Reset from here');
+    btn.title = `Reset this agent and all subsequent agents to pending. Run /vibe continue to re-run from ${selectedId}.`;
+    btn.addEventListener('click', async () => {
+      if (confirm(`Reset "${selectedId}" and all agents after it to pending?\n\nThis cannot be undone. Run /vibe continue to resume from this point.`)) {
+        await api('POST', `/reset/${selectedId}`);
+      }
+    });
+    actionsDiv.appendChild(btn);
+    hasButtons = true;
+  }
+
+  actionsDiv.style.display = hasButtons ? '' : 'none';
 }
 
 function renderDetailPanel() {
@@ -816,8 +1373,19 @@ function renderDetailPanel() {
   if (s.activity) show('activity', s.activity);
   else            hide('activity');
 
+  const dur = fmtDuration(s.duration_ms);
+  if (dur) show('duration', dur);
+  else     hide('duration');
+
   show('tokensIn',  fmtTokens(s.tokens_in));
   show('tokensOut', fmtTokens(s.tokens_out));
+
+  const agentCost = fmtCost(s.tokens_in, s.tokens_out);
+  if (agentCost) show('agentCost', agentCost, 'var(--green)');
+  else           hide('agentCost');
+
+  if (s.last_error) show('lastError', s.last_error, 'var(--red)');
+  else              hide('lastError');
 
   if ((s.tokens_in || 0) > 8000) {
     show('warnMsg', 'Input exceeded 8,000 token threshold', 'var(--amber)');
@@ -839,11 +1407,32 @@ function renderHeader(state) {
 
 function renderSummaryBar(state) {
   if (!summaryRefs) return;
-  const { tokensVal, elapsedVal, phasesVal, gatesRow } = summaryRefs;
+  const { sessionVal, allTimeMetric, allTimeVal, runCountPill, elapsedVal, phasesVal, gatesRow } = summaryRefs;
 
+  // Session tokens + cost
   const ti = (state && state.token_totals && state.token_totals.in)  || 0;
   const to = (state && state.token_totals && state.token_totals.out) || 0;
-  setText(tokensVal, fmtTokens(ti) + ' in / ' + fmtTokens(to) + ' out');
+  const sessionCost = fmtCost(ti, to);
+  setText(sessionVal, fmtTokens(ti) + ' in / ' + fmtTokens(to) + ' out' + (sessionCost ? '  ' + sessionCost : ''));
+
+  // All-time tokens + cost (from usage_totals.json)
+  if (usageData && (usageData.all_time_in || usageData.all_time_out)) {
+    const ati = usageData.all_time_in  || 0;
+    const ato = usageData.all_time_out || 0;
+    const atCost = fmtCost(ati, ato);
+    setText(allTimeVal, fmtTokens(ati) + ' in / ' + fmtTokens(ato) + ' out' + (atCost ? '  ' + atCost : ''));
+    allTimeMetric.style.display = '';
+    if (usageData.run_count > 1) {
+      setText(runCountPill, usageData.run_count + ' runs');
+      runCountPill.style.display = '';
+    } else {
+      runCountPill.style.display = 'none';
+    }
+  } else {
+    allTimeMetric.style.display = 'none';
+    runCountPill.style.display  = 'none';
+  }
+
   setText(elapsedVal, fmtElapsed(state && state.started_at));
 
   const agents = (state && state.agents) || {};
@@ -869,11 +1458,14 @@ function renderSummaryBar(state) {
 
 function onUpdate(payload) {
   pipelineState = payload.state;
+  usageData     = payload.usage || null;
+  currentLog    = payload.log  || [];
   if (!pipelineState) return;
 
   renderHeader(pipelineState);
   renderNodes(pipelineState.agents);
   renderDetailPanel();
+  renderActionButtons();
   renderSummaryBar(pipelineState);
   renderLogFeed(payload.log || []);
 
@@ -901,6 +1493,14 @@ function fitCanvas() {
 }
 fitCanvas();
 window.addEventListener('resize', fitCanvas);
+
+// Close content modal on Escape, or on backdrop click
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeContentModal();
+});
+document.getElementById('content-modal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeContentModal();
+});
 
 // Tick elapsed timer every second
 setInterval(() => {

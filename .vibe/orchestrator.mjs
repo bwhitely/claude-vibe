@@ -66,17 +66,34 @@ function deepMerge(target, source) {
   }
 }
 
-function setAgentStatus(name, status, activity = null, tokens_in = null, tokens_out = null) {
+function setAgentStatus(name, status, activity = null, tokens_in = null, tokens_out = null, last_error = null) {
   const state = readState();
   if (!state.agents) state.agents = {};
-  state.agents[name] = {
-    ...state.agents[name],
+  const existing = state.agents[name] || {};
+  const now = new Date().toISOString();
+
+  const updates = {
+    ...existing,
     status,
     activity,
-    // Preserve existing token counts if new values are null (agent still running or unknown)
-    tokens_in:  tokens_in  ?? state.agents[name]?.tokens_in  ?? null,
-    tokens_out: tokens_out ?? state.agents[name]?.tokens_out ?? null,
+    tokens_in:  tokens_in  ?? existing.tokens_in  ?? null,
+    tokens_out: tokens_out ?? existing.tokens_out ?? null,
   };
+
+  if (status === 'running') {
+    updates.started_at   = now;
+    updates.completed_at = null;
+    updates.duration_ms  = null;
+    updates.last_error   = null;
+  } else if (['passed', 'failed', 'skipped'].includes(status)) {
+    updates.completed_at = now;
+    updates.duration_ms  = existing.started_at
+      ? Date.now() - new Date(existing.started_at).getTime()
+      : null;
+    if (last_error) updates.last_error = last_error.slice(0, 600);
+  }
+
+  state.agents[name] = updates;
   writeState(state);
 }
 
@@ -192,6 +209,7 @@ function runAgent(name, phase, promptFile, contextInput) {
 
     child.on('close', (code) => {
       if (code !== 0 && !stdout) {
+        setAgentStatus(name, 'failed', null, null, null, stderr || `Exit code ${code}`);
         reject(new Error(`Agent ${name} exited with code ${code}: ${stderr}`));
         return;
       }
@@ -237,6 +255,7 @@ function runAgent(name, phase, promptFile, contextInput) {
       if (tokensIn  != null) state.token_totals.in  += tokensIn;
       if (tokensOut != null) state.token_totals.out += tokensOut;
       writeState(state);
+      updateUsageTotals(tokensIn, tokensOut);
 
       setAgentStatus(name, 'passed', null, tokensIn, tokensOut);
 
@@ -252,9 +271,59 @@ function runAgent(name, phase, promptFile, contextInput) {
     });
 
     child.on('error', (err) => {
+      setAgentStatus(name, 'failed', null, null, null, err.message);
       reject(new Error(`Failed to spawn agent ${name}: ${err.message}`));
     });
   });
+}
+
+// ─────────────────────────────────────────────────
+// Persistent usage tracking (survives resets)
+// ─────────────────────────────────────────────────
+
+const USAGE_PATH = resolve(VIBE_DIR, 'usage_totals.json');
+
+function updateUsageTotals(tokensIn, tokensOut) {
+  if (tokensIn == null && tokensOut == null) return;
+  let totals = { all_time_in: 0, all_time_out: 0, run_count: 0 };
+  try {
+    if (existsSync(USAGE_PATH)) totals = JSON.parse(readFileSync(USAGE_PATH, 'utf-8'));
+  } catch {}
+  if (tokensIn  != null) totals.all_time_in  = (totals.all_time_in  || 0) + tokensIn;
+  if (tokensOut != null) totals.all_time_out = (totals.all_time_out || 0) + tokensOut;
+  totals.last_updated = new Date().toISOString();
+  writeFileSync(USAGE_PATH, JSON.stringify(totals, null, 2) + '\n');
+}
+
+function incrementRunCount() {
+  let totals = { all_time_in: 0, all_time_out: 0, run_count: 0 };
+  try {
+    if (existsSync(USAGE_PATH)) totals = JSON.parse(readFileSync(USAGE_PATH, 'utf-8'));
+  } catch {}
+  totals.run_count = (totals.run_count || 0) + 1;
+  writeFileSync(USAGE_PATH, JSON.stringify(totals, null, 2) + '\n');
+}
+
+// Returns list of files changed in a given commit (excludes .vibe/ internals)
+function filesInCommit(commit) {
+  if (!commit) return [];
+  try {
+    return git('show', '--name-only', '--format=', commit)
+      .split('\n')
+      .map(f => f.trim())
+      .filter(f => f && !f.startsWith('.vibe/'));
+  } catch { return []; }
+}
+
+// Run an agent only if it hasn't been marked skipped in state.json.
+// Used in runPipeline so live UI skip-toggles are respected mid-run.
+async function maybeRun(agentName, fn) {
+  const s = readState();
+  if (s.agents?.[agentName]?.status === 'skipped') {
+    console.log(`  [skipped] ${agentName}`);
+    return { result: 'skipped', tokensIn: 0, tokensOut: 0 };
+  }
+  return fn();
 }
 
 // ─────────────────────────────────────────────────
@@ -493,10 +562,13 @@ async function runImplementer() {
     result.tokensIn, result.tokensOut,
   );
 
+  const implFiles = filesInCommit(commit);
   appendLog({ agent: 'implementer', phase: 6, tokens_in: result.tokensIn, tokens_out: result.tokensOut,
     context: { artifacts_read: ['architecture.md (full)', 'threat_model.md (full)', 'ux_spec.md (full)'],
       skills_injected: skills.map(s => s.name), token_warning: result.tokenWarning },
-    decision: 'implementation complete', artifact_written: null, commit, gate_result: null });
+    decision: `wrote ${implFiles.length} file${implFiles.length === 1 ? '' : 's'}`,
+    files_written: implFiles,
+    artifact_written: null, commit, gate_result: null });
 
   return result;
 }
@@ -551,18 +623,21 @@ async function runTestWriter() {
     result.tokensIn, result.tokensOut,
   );
 
+  const testFiles = filesInCommit(commit);
   appendLog({ agent: 'test_writer', phase: 7, tokens_in: result.tokensIn, tokens_out: result.tokensOut,
     context: { artifacts_read: ['public interfaces (extracted)', 'test patterns'], skills_injected: [], token_warning: result.tokenWarning },
-    decision: 'test suite written', artifact_written: null, commit, gate_result: null });
+    decision: `wrote ${testFiles.length} test file${testFiles.length === 1 ? '' : 's'}`,
+    files_written: testFiles,
+    artifact_written: null, commit, gate_result: null });
 
   return result;
 }
 
-async function runCritic(iteration = 1) {
+async function runCritic(iteration = 1, baselineCommit = null) {
   console.log(`  [8/13] Critic Agent — reviewing implementation (iteration ${iteration})`);
   setAgentStatus('critic', 'running', `Reviewing implementation (iteration ${iteration})`);
 
-  const diff = getScopedDiff(getLastVibeCommit());
+  const diff = getScopedDiff(baselineCommit || getLastVibeCommit());
   const prd = readArtifact('prd.md');
 
   const reqLines = prd.split('\n').filter(l => l.match(/REQ-/)).join('\n');
@@ -581,6 +656,15 @@ async function runCritic(iteration = 1) {
     } else {
       findings = { score: 0, passed: false, threshold: 80, blocking_issues: [{ id: 'C-ERR', description: 'Failed to parse critic output' }], warnings: [] };
     }
+  }
+
+  // Critic returns {"error": true, "reason": "..."} when it can't review (e.g. empty diff)
+  if (findings.error) {
+    findings = {
+      score: 0, passed: false, threshold: 80,
+      blocking_issues: [{ id: 'C-ERR', description: findings.reason || 'Critic returned an error — check input context' }],
+      warnings: [],
+    };
   }
 
   writeArtifact('review_findings.md', JSON.stringify(findings, null, 2));
@@ -618,11 +702,16 @@ async function runFixer(iteration = 1) {
     .filter((f, idx, arr) => arr.indexOf(f) === idx);
 
   let fileContents = '';
-  for (const f of referencedFiles) {
-    const fullPath = resolve(PROJECT_ROOT, f);
-    if (existsSync(fullPath)) {
-      fileContents += `\n\n## File: ${f}\n\n\`\`\`\n${readFileSync(fullPath, 'utf-8')}\n\`\`\``;
+  if (referencedFiles.length > 0) {
+    for (const f of referencedFiles) {
+      const fullPath = resolve(PROJECT_ROOT, f);
+      if (existsSync(fullPath)) {
+        fileContents += `\n\n## File: ${f}\n\n\`\`\`\n${readFileSync(fullPath, 'utf-8')}\n\`\`\``;
+      }
     }
+  } else {
+    // No specific files referenced (e.g. C-ERR from empty diff) — provide full implementation diff
+    fileContents = `\n\n## Implementation Context (no specific files referenced)\n\n\`\`\`diff\n${getFullDiff()}\n\`\`\``;
   }
 
   const blockingJson = JSON.stringify(findings.blocking_issues, null, 2);
@@ -649,23 +738,285 @@ async function runCriticFixerLoop() {
   const state = readState();
   const maxIterations = state.iterations?.max_critic_fixer || 3;
 
+  // Capture baseline before the loop starts so every critic iteration diffs from
+  // the same point. Without this, getLastVibeCommit() returns the critic's own
+  // previous commit after iteration 1, producing an empty diff on all subsequent passes.
+  let baselineCommit;
+  try { baselineCommit = git('rev-parse', '--short', 'HEAD').trim(); } catch { baselineCommit = null; }
+
   for (let i = 1; i <= maxIterations; i++) {
     updateState({ iterations: { critic_fixer: i } });
 
-    const criticResult = await runCritic(i);
+    const criticResult = await runCritic(i, baselineCommit);
     if (criticResult.findings.passed) {
       console.log(`  Critic passed with score ${criticResult.findings.score}`);
       return true;
     }
 
     if (i === maxIterations) {
-      console.log(`  Critic failed after ${maxIterations} iterations — escalating`);
+      console.log(`  Critic failed after ${maxIterations} iterations`);
       return false;
     }
 
     await runFixer(i);
   }
   return false;
+}
+
+// ─────────────────────────────────────────────────
+// Quality phase helpers — retry loops replacing escalation
+// ─────────────────────────────────────────────────
+
+function resetAgentStatus(name) {
+  const state = readState();
+  if (state.agents[name]) {
+    state.agents[name] = { status: 'pending', activity: null, tokens_in: null, tokens_out: null };
+    writeState(state);
+  }
+}
+
+function resetQualityAgents() {
+  const state = readState();
+  for (const name of ['critic', 'fixer', 'security_auditor', 'performance_agent', 'completeness_judge']) {
+    if (state.agents[name]) {
+      state.agents[name] = { status: 'pending', activity: null, tokens_in: null, tokens_out: null };
+    }
+  }
+  state.iterations = { ...state.iterations, critic_fixer: 0 };
+  writeState(state);
+}
+
+// Convert security_findings.md format → fixer blocking-issues format, then run fixer
+async function runSecurityFixer(iteration) {
+  const findingsRaw = readArtifact('security_findings.md');
+  let secFindings;
+  try { secFindings = JSON.parse(findingsRaw); } catch { return; }
+
+  const blockingIssues = [
+    ...(secFindings.new_findings || [])
+      .filter(f => ['high', 'medium'].includes(f.severity))
+      .map(f => ({ id: f.id, file: f.file, description: f.description })),
+    ...(secFindings.unverified_items || [])
+      .map((item, i) => ({ id: `SEC-UV-${i + 1}`, description: item })),
+  ];
+  const warnings = (secFindings.new_findings || [])
+    .filter(f => f.severity === 'low')
+    .map(f => ({ id: f.id, description: f.description }));
+
+  if (!blockingIssues.length) return;
+
+  writeArtifact('review_findings.md', JSON.stringify({
+    score: 0, passed: false, threshold: 80,
+    blocking_issues: blockingIssues,
+    warnings,
+  }, null, 2));
+
+  await runFixer(iteration);
+}
+
+// Comprehensive implementer fix pass — used when fixer loop exhausts or judge fails
+async function runImplementerComprehensiveFix(round) {
+  console.log(`  [6] Implementer — comprehensive fix pass (quality round ${round})`);
+  setAgentStatus('implementer', 'running', `Comprehensive fix pass (round ${round})`);
+
+  const findingsRaw = readArtifact('review_findings.md');
+  const arch = readArtifact('architecture.md');
+  const threat = readArtifact('threat_model.md');
+  const diff = getFullDiff();
+
+  const context = [
+    `# Comprehensive Fix — Quality Round ${round}`,
+    `The following blocking issues remain after automated fix attempts. Resolve all of them.\n\n## Blocking Issues\n\n${findingsRaw}`,
+    `## Architecture\n\n${arch}`,
+    `## Security Requirements\n\n${threat}`,
+    `## Current Implementation\n\n\`\`\`diff\n${diff}\n\`\`\``,
+  ].join('\n\n---\n\n');
+  writeContextFile('implementer', context);
+
+  const state = readState();
+  const skills = getSkillInjection('implementer', state.detected_features || {});
+  const skillSuffix = skills.length
+    ? '\n\n---\n\n## Skills\n\n' + skills.map(s => s.content).join('\n\n')
+    : '';
+
+  const result = await runAgent('implementer', 6, '06_implementer.md', context + skillSuffix);
+
+  const commit = gitCommit('implementer', `6.fix.${round}`,
+    `fix(vibe/implementer): comprehensive fix pass (quality round ${round})`,
+    ['Addressing all remaining blocking issues from quality checks'],
+    result.tokensIn, result.tokensOut,
+  );
+
+  const implFiles = filesInCommit(commit);
+  appendLog({
+    agent: 'implementer', phase: `6.fix.${round}`,
+    tokens_in: result.tokensIn, tokens_out: result.tokensOut,
+    context: { artifacts_read: ['review_findings.md', 'architecture.md', 'threat_model.md', 'full diff'], skills_injected: skills.map(s => s.name), token_warning: result.tokenWarning },
+    decision: `comprehensive fix — wrote ${implFiles.length} files`,
+    files_written: implFiles, artifact_written: null, commit, gate_result: null,
+  });
+
+  return result;
+}
+
+// Unified quality phase — handles critic/fixer, security, performance, completeness
+// with automatic retry loops. Only escalates as a last resort.
+async function runQualityPhase() {
+  const MAX_OUTER = 2;
+
+  for (let outer = 1; outer <= MAX_OUTER; outer++) {
+    if (outer > 1) {
+      console.log(`\n  Quality retry round ${outer}/${MAX_OUTER}...`);
+      resetQualityAgents();
+    }
+
+    // Critic/fixer loop (skip if already passed or explicitly skipped)
+    const criticDone = ['passed', 'skipped'].includes(readState().agents?.critic?.status);
+    const criticPassed = criticDone || await runCriticFixerLoop();
+
+    if (!criticPassed) {
+      if (outer < MAX_OUTER) {
+        console.log(`  Critic/fixer exhausted (round ${outer}/${MAX_OUTER}) — running comprehensive implementer fix`);
+        await runImplementerComprehensiveFix(outer);
+        continue;
+      }
+      console.log('\n  ESCALATION: Quality loop exhausted after maximum retries — manual review required');
+      updateState({ status: 'escalated' });
+      return false;
+    }
+
+    // Security + Performance in parallel (skip if already passed/skipped)
+    const secDone  = ['passed', 'skipped'].includes(readState().agents?.security_auditor?.status);
+    const perfDone = ['passed', 'skipped'].includes(readState().agents?.performance_agent?.status);
+
+    const [secResult, perfResult] = await Promise.all([
+      secDone  ? Promise.resolve({ findings: { cleared: true } })                     : runSecurityAuditor(),
+      perfDone ? Promise.resolve({ findings: { cleared: true, blocking_issues: [] } }) : runPerformanceAgent(),
+    ]);
+
+    // If security not cleared: run targeted security fixer then re-audit
+    if (!secDone && !secResult.findings.cleared) {
+      console.log('  Security not cleared — running targeted security fixer');
+      await runSecurityFixer(outer * 10);
+      resetAgentStatus('security_auditor');
+      await runSecurityAuditor();
+    }
+
+    // If performance has blocking issues: run targeted perf fixer then re-audit
+    if (!perfDone && !perfResult.findings.cleared && perfResult.findings.blocking_issues?.length) {
+      console.log('  Performance blocking issues found — running targeted fixer');
+      writeArtifact('review_findings.md', JSON.stringify({
+        score: 0, passed: false, threshold: 80,
+        blocking_issues: perfResult.findings.blocking_issues,
+        warnings: perfResult.findings.warnings || [],
+      }, null, 2));
+      await runFixer(outer * 100);
+      resetAgentStatus('performance_agent');
+      await runPerformanceAgent();
+    }
+
+    // Completeness judge
+    if (['passed', 'skipped'].includes(readState().agents?.completeness_judge?.status)) return true;
+
+    const judgeResult = await runCompletenessJudge();
+    if (judgeResult.report.done) return true;
+
+    if (outer < MAX_OUTER) {
+      console.log(`  Completeness gates failed (round ${outer}/${MAX_OUTER}) — running comprehensive implementer fix`);
+      await runImplementerComprehensiveFix(outer);
+    } else {
+      console.log('\n  ESCALATION: Quality gates not met after maximum retries — manual review required');
+      updateState({ status: 'escalated' });
+      return false;
+    }
+  }
+
+  return false;
+}
+
+// Build check — installs deps, runs build scripts, retries via fixer on failure
+// Non-fatal: failure is logged but does not stop the pipeline
+async function runBuildCheck() {
+  console.log('  [10c] Builder — installing dependencies and verifying build');
+  setAgentStatus('builder', 'running', 'Installing dependencies and building project');
+
+  const checkDirs = [
+    PROJECT_ROOT,
+    resolve(PROJECT_ROOT, 'server'),
+    resolve(PROJECT_ROOT, 'client'),
+    resolve(PROJECT_ROOT, 'frontend'),
+    resolve(PROJECT_ROOT, 'backend'),
+    resolve(PROJECT_ROOT, 'app'),
+  ];
+  const pkgDirs = checkDirs.filter(d => existsSync(resolve(d, 'package.json')));
+
+  if (!pkgDirs.length) {
+    console.log('    No package.json found — skipping build check');
+    setAgentStatus('builder', 'skipped');
+    return { passed: true };
+  }
+
+  const pm = existsSync(resolve(PROJECT_ROOT, 'pnpm-lock.yaml')) ? 'pnpm'
+           : existsSync(resolve(PROJECT_ROOT, 'yarn.lock'))      ? 'yarn' : 'npm';
+
+  const MAX_BUILD_RETRIES = 2;
+  for (let attempt = 1; attempt <= MAX_BUILD_RETRIES; attempt++) {
+    const errors = [];
+
+    for (const dir of pkgDirs) {
+      try {
+        execFileSync(pm, ['install'], { cwd: dir, encoding: 'utf-8', stdio: 'pipe', timeout: 120_000 });
+        console.log(`    install OK: ${dir.replace(PROJECT_ROOT, '.')}`);
+      } catch (err) {
+        const msg = (err.stderr || err.stdout || err.message || '').toString().slice(0, 2000);
+        errors.push(`Install failed in ${dir.replace(PROJECT_ROOT, '.')}:\n${msg}`);
+      }
+    }
+
+    for (const dir of pkgDirs) {
+      try {
+        const pkg = JSON.parse(readFileSync(resolve(dir, 'package.json'), 'utf-8'));
+        if (!pkg.scripts?.build) continue;
+        execFileSync(pm, ['run', 'build'], { cwd: dir, encoding: 'utf-8', stdio: 'pipe', timeout: 180_000 });
+        console.log(`    build OK: ${dir.replace(PROJECT_ROOT, '.')}`);
+      } catch (err) {
+        const msg = (err.stderr || err.stdout || err.message || '').toString().slice(0, 4000);
+        errors.push(`Build failed in ${dir.replace(PROJECT_ROOT, '.')}:\n${msg}`);
+      }
+    }
+
+    if (!errors.length) {
+      const commit = gitCommit('builder', '10c',
+        'chore(vibe/builder): verify build succeeds',
+        [`All ${pkgDirs.length} package(s) installed and built successfully`],
+        null, null,
+      );
+      appendLog({ agent: 'builder', phase: '10c', tokens_in: null, tokens_out: null,
+        context: { artifacts_read: [], skills_injected: [], token_warning: false },
+        decision: `build passed (${pkgDirs.length} packages)`,
+        artifact_written: null, commit, gate_result: true });
+      setAgentStatus('builder', 'passed');
+      return { passed: true };
+    }
+
+    console.log(`  Build attempt ${attempt}/${MAX_BUILD_RETRIES} failed — ${errors.length} error(s)`);
+    if (attempt < MAX_BUILD_RETRIES) {
+      const buildIssues = errors.map((e, i) => ({ id: `BUILD-${i + 1}`, description: e.slice(0, 1000) }));
+      writeArtifact('review_findings.md', JSON.stringify({
+        score: 0, passed: false, threshold: 80,
+        blocking_issues: buildIssues, warnings: [],
+      }, null, 2));
+      await runFixer(900 + attempt);
+    }
+  }
+
+  const errSummary = 'Build check failed after retries — check build output';
+  console.log(`  WARNING: ${errSummary}`);
+  appendLog({ agent: 'builder', phase: '10c', tokens_in: null, tokens_out: null,
+    context: { artifacts_read: [], skills_injected: [], token_warning: false },
+    decision: 'build failed', artifact_written: null, commit: null, gate_result: false });
+  setAgentStatus('builder', 'failed', null, null, null, errSummary);
+  return { passed: false };
 }
 
 async function runSecurityAuditor() {
@@ -923,7 +1274,7 @@ async function bootstrap(goal) {
 
   for (const name of ['research', 'analyst', 'architect', 'security_planner', 'ux_designer',
     'implementer', 'test_writer', 'critic', 'fixer', 'security_auditor', 'performance_agent',
-    'completeness_judge', 'documenter', 'deployer']) {
+    'completeness_judge', 'builder', 'documenter', 'deployer']) {
     initialState.agents[name] = { status: 'pending', activity: null, tokens_in: null, tokens_out: null };
   }
 
@@ -953,6 +1304,7 @@ async function bootstrap(goal) {
     git('commit', '-m', 'chore(vibe): scaffold .vibe directory');
   } catch {}
 
+  incrementRunCount();
   updateState({ status: 'running', phase: 1 });
   return uiProcess;
 }
@@ -1000,6 +1352,8 @@ async function handleContinue() {
   uiProcess.unref();
   console.log('  VIBE monitor running at http://localhost:4242');
 
+  incrementRunCount();
+
   if (state.status === 'complete') {
     console.log('  Project previously completed — re-entering at Critic');
     updateState({ status: 'running', phase: 8 });
@@ -1033,55 +1387,20 @@ export async function runPipeline(goal) {
     uiProcess = await bootstrap(goal);
     console.log('\n  Starting pipeline...\n');
 
-    await runResearch(goal);
-    await runAnalyst(goal);
-    await runArchitect();
-    await runSecurityPlanner();
-    await runUxDesigner();
-    await runImplementer();
-    await runTestWriter();
+    await maybeRun('research',         () => runResearch(goal));
+    await maybeRun('analyst',          () => runAnalyst(goal));
+    await maybeRun('architect',        () => runArchitect());
+    await maybeRun('security_planner', () => runSecurityPlanner());
+    await maybeRun('ux_designer',      () => runUxDesigner());
+    await maybeRun('implementer',      () => runImplementer());
+    await maybeRun('test_writer',      () => runTestWriter());
 
-    const criticPassed = await runCriticFixerLoop();
-    if (!criticPassed) {
-      console.log('\n  ESCALATION: Critic/Fixer loop exhausted without resolution');
-      const findings = readArtifact('review_findings.md');
-      console.log('  Unresolved issues:\n' + findings);
-      updateState({ status: 'escalated' });
-      return;
-    }
+    const qualityPassed = await runQualityPhase();
+    if (!qualityPassed) return;
 
-    const [secResult, perfResult] = await Promise.all([
-      runSecurityAuditor(),
-      runPerformanceAgent(),
-    ]);
-
-    if (!secResult.findings.cleared) {
-      console.log('\n  ESCALATION: Security audit failed');
-      console.log('  Findings:', JSON.stringify(secResult.findings, null, 2));
-      updateState({ status: 'escalated' });
-      return;
-    }
-
-    if (!perfResult.findings.cleared && perfResult.findings.blocking_issues?.length) {
-      console.log('  Performance blocking issues found — running fixer');
-      writeArtifact('review_findings.md', JSON.stringify({
-        score: 0, passed: false, threshold: 80,
-        blocking_issues: perfResult.findings.blocking_issues,
-        warnings: perfResult.findings.warnings || [],
-      }, null, 2));
-      await runFixer(99);
-    }
-
-    const judgeResult = await runCompletenessJudge();
-    if (!judgeResult.report.done) {
-      console.log('\n  ESCALATION: Completeness check failed');
-      console.log('  Report:', JSON.stringify(judgeResult.report, null, 2));
-      updateState({ status: 'escalated' });
-      return;
-    }
-
-    await runDocumenter();
-    await runDeployer();
+    await maybeRun('builder',   () => runBuildCheck());
+    await maybeRun('documenter', () => runDocumenter());
+    await maybeRun('deployer',   () => runDeployer());
 
     updateState({ status: 'complete' });
     console.log('\n  VIBE pipeline complete!\n');
@@ -1120,51 +1439,25 @@ export async function continuePipeline() {
 
     for (let p = phase; p <= 7; p++) {
       const agentNames = { 1: 'research', 2: 'analyst', 3: 'architect', 4: 'security_planner', 5: 'ux_designer', 6: 'implementer', 7: 'test_writer' };
-      if (state.agents[agentNames[p]]?.status === 'passed') continue;
+      const agentStatus = state.agents[agentNames[p]]?.status;
+      if (agentStatus === 'passed' || agentStatus === 'skipped') continue;
       if (phases[p]) await phases[p]();
     }
 
-    if (phase <= 8 || state.agents.critic?.status !== 'passed') {
-      const criticPassed = await runCriticFixerLoop();
-      if (!criticPassed) {
-        console.log('\n  ESCALATION: Critic/Fixer loop exhausted');
-        updateState({ status: 'escalated' });
-        return;
-      }
+    const currentState = readState();
+    const allQualityDone = ['passed', 'skipped'].includes(currentState.agents.critic?.status) &&
+                           ['passed', 'skipped'].includes(currentState.agents.security_auditor?.status) &&
+                           ['passed', 'skipped'].includes(currentState.agents.performance_agent?.status) &&
+                           ['passed', 'skipped'].includes(currentState.agents.completeness_judge?.status);
+
+    if (!allQualityDone) {
+      const qualityPassed = await runQualityPhase();
+      if (!qualityPassed) return;
     }
 
-    if (state.agents.security_auditor?.status !== 'passed' || state.agents.performance_agent?.status !== 'passed') {
-      const [secResult, perfResult] = await Promise.all([
-        state.agents.security_auditor?.status !== 'passed' ? runSecurityAuditor() : { findings: { cleared: true } },
-        state.agents.performance_agent?.status !== 'passed' ? runPerformanceAgent() : { findings: { cleared: true } },
-      ]);
-
-      if (!secResult.findings.cleared) {
-        console.log('\n  ESCALATION: Security audit failed');
-        updateState({ status: 'escalated' });
-        return;
-      }
-      if (!perfResult.findings.cleared && perfResult.findings.blocking_issues?.length) {
-        writeArtifact('review_findings.md', JSON.stringify({
-          score: 0, passed: false, threshold: 80,
-          blocking_issues: perfResult.findings.blocking_issues,
-          warnings: perfResult.findings.warnings || [],
-        }, null, 2));
-        await runFixer(99);
-      }
-    }
-
-    if (state.agents.completeness_judge?.status !== 'passed') {
-      const judgeResult = await runCompletenessJudge();
-      if (!judgeResult.report.done) {
-        console.log('\n  ESCALATION: Completeness check failed');
-        updateState({ status: 'escalated' });
-        return;
-      }
-    }
-
-    if (state.agents.documenter?.status !== 'passed') await runDocumenter();
-    if (state.agents.deployer?.status !== 'passed') await runDeployer();
+    if (!['passed', 'skipped'].includes(readState().agents.builder?.status)) await runBuildCheck();
+    if (!['passed', 'skipped'].includes(readState().agents.documenter?.status)) await runDocumenter();
+    if (!['passed', 'skipped'].includes(readState().agents.deployer?.status)) await runDeployer();
 
     updateState({ status: 'complete' });
     console.log('\n  VIBE pipeline complete!\n');
